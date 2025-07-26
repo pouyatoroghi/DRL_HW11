@@ -311,4 +311,4 @@ class GAIL(Module):
 
             set_params(self.pi, new_params)
 
-        return exp_rwd_mean, rwd_iter_means
+        return exp_rwd_mean, rwd_iter_means, exp_rwd_iter, rwd_iter
