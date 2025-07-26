@@ -2,12 +2,7 @@ import torch
 from torch.nn import Module, Sequential, Linear, Tanh, Parameter, Embedding
 from torch.distributions import Categorical, MultivariateNormal
 
-if torch.cuda.is_available():
-    from torch.cuda import FloatTensor
-    torch.set_default_tensor_type(torch.cuda.FloatTensor)
-else:
-    from torch import FloatTensor
-
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class PolicyNetwork(Module):
     def __init__(self, state_dim, action_dim, discrete) -> None:
@@ -38,7 +33,7 @@ class PolicyNetwork(Module):
         else:
             mean = self.net(states)
             std = torch.exp(self.log_std)
-            cov_mtx = torch.diag_embed(std ** 2)  # Supports batch input
+            cov_mtx = torch.diag_embed(std ** 2, device=device)  # Supports batch input
             return MultivariateNormal(mean, cov_mtx)
 
 
@@ -112,11 +107,7 @@ class Expert(Module):
     def act(self, state):
         self.pi.eval()
 
-        # Ensure state has batch dimension
-        state = FloatTensor(state).unsqueeze(0)  # (1, state_dim)
+        state = torch.tensor(state, dtype=torch.float32, device=device)
         distb = self.pi(state)
 
-        action = distb.sample().detach().cpu().numpy()
-
-        # Return scalar for discrete action, otherwise full action vector
-        return action[0] if self.discrete else action[0, :]
+        return distb.sample().detach().cpu().numpy()
