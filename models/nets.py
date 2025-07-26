@@ -125,6 +125,8 @@ class Expert(Module):
     def act(self, state):
         self.pi.eval()
 
+        print(state.shape)
+
         state = FloatTensor(state)
         distb = self.pi(state)
 
