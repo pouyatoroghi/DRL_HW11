@@ -3,8 +3,8 @@ import torch
 
 from torch.nn import Module
 
-from models.nets import PolicyNetwork, ValueNetwork, Discriminator
-from utils.funcs import get_flat_grads, get_flat_params, set_params, \
+from Files.models.nets import PolicyNetwork, ValueNetwork, Discriminator
+from Files.utils.funcs import get_flat_grads, get_flat_params, set_params, \
     conjugate_gradient, rescale_and_linesearch
 
 if torch.cuda.is_available():
