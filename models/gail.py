@@ -7,12 +7,7 @@ from Files.models.nets import PolicyNetwork, ValueNetwork, Discriminator
 from Files.utils.funcs import get_flat_grads, get_flat_params, set_params, \
     conjugate_gradient, rescale_and_linesearch
 
-if torch.cuda.is_available():
-    from torch.cuda import FloatTensor
-    torch.set_default_tensor_type(torch.cuda.FloatTensor)
-else:
-    from torch import FloatTensor
-
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class GAIL(Module):
     def __init__(
@@ -40,7 +35,7 @@ class GAIL(Module):
     def act(self, state):
         self.pi.eval()
 
-        state = FloatTensor(state)
+        state = torch.tensor(state, dtype=torch.float32, device=device)
         distb = self.pi(state)
 
         action = distb.sample().detach().cpu().numpy()
@@ -74,7 +69,7 @@ class GAIL(Module):
             t = 0
             done = False
 
-            ob = env.reset()
+            ob, _ = env.reset()
 
             while not done and steps < num_steps_per_iter:
                 act = expert.act(ob)
@@ -85,7 +80,9 @@ class GAIL(Module):
 
                 if render:
                     env.render()
-                ob, rwd, done, info = env.step(act)
+                
+                ob, rwd, terminated, truncated, info = env.step(act)
+                done = terminated or truncated
 
                 ep_rwds.append(rwd)
 
@@ -100,16 +97,16 @@ class GAIL(Module):
             if done:
                 exp_rwd_iter.append(np.sum(ep_rwds))
 
-            ep_obs = FloatTensor(np.array(ep_obs))
-            ep_rwds = FloatTensor(ep_rwds)
+            ep_obs = torch.tensor(np.array(ep_obs), dtype=torch.float32, device=device)
+            ep_rwds = torch.tensor(ep_rwds, dtype=torch.float32, device=device)
 
         exp_rwd_mean = np.mean(exp_rwd_iter)
         print(
             "Expert Reward Mean: {}".format(exp_rwd_mean)
         )
 
-        exp_obs = FloatTensor(np.array(exp_obs))
-        exp_acts = FloatTensor(np.array(exp_acts))
+        exp_obs = torch.tensor(np.array(exp_obs), dtype=torch.float32, device=device)
+        exp_acts = torch.tensor(np.array(exp_acts), dtype=torch.float32, device=device)
 
         rwd_iter_means = []
         for i in range(num_iters):
@@ -134,7 +131,7 @@ class GAIL(Module):
                 t = 0
                 done = False
 
-                ob = env.reset()
+                ob, _ = env.reset()
 
                 while not done and steps < num_steps_per_iter:
                     act = self.act(ob)
@@ -147,7 +144,9 @@ class GAIL(Module):
 
                     if render:
                         env.render()
-                    ob, rwd, done, info = env.step(act)
+                        
+                    ob, rwd, terminated, truncated, info = env.step(act)
+                    done = terminated or truncated
 
                     ep_rwds.append(rwd)
                     ep_gms.append(gae_gamma ** t)
@@ -164,38 +163,28 @@ class GAIL(Module):
                 if done:
                     rwd_iter.append(np.sum(ep_rwds))
 
-                ep_obs = FloatTensor(np.array(ep_obs))
-                ep_acts = FloatTensor(np.array(ep_acts))
-                ep_rwds = FloatTensor(ep_rwds)
-                # ep_disc_rwds = FloatTensor(ep_disc_rwds)
-                ep_gms = FloatTensor(ep_gms)
-                ep_lmbs = FloatTensor(ep_lmbs)
+                ep_obs = torch.tensor(np.array(ep_obs), dtype=torch.float32, device=device)
+                ep_acts = torch.tensor(np.array(ep_acts), dtype=torch.float32, device=device)
+                ep_rwds = torch.tensor(ep_rwds, dtype=torch.float32, device=device)
+                # ep_disc_rwds = torch.tensor(ep_disc_rwds, dtype=torch.float32, device=device)
+                ep_gms = torch.tensor(ep_gms, dtype=torch.float32, device=device)
+                ep_lmbs = torch.tensor(ep_lmbs, dtype=torch.float32, device=device)
 
-                ep_costs = (-1) * torch.log(self.d(ep_obs, ep_acts))\
-                    .squeeze().detach()
+                ep_costs = (-1) * torch.log(self.d(ep_obs, ep_acts)).squeeze().detach()
                 ep_disc_costs = ep_gms * ep_costs
 
-                ep_disc_rets = FloatTensor(
-                    [sum(ep_disc_costs[i:]) for i in range(t)]
-                )
+                ep_disc_rets = torch.tensor([sum(ep_disc_costs[i:]) for i in range(t)], dtype=torch.float32, device=device)
                 ep_rets = ep_disc_rets / ep_gms
 
                 rets.append(ep_rets)
 
                 self.v.eval()
                 curr_vals = self.v(ep_obs).detach()
-                next_vals = torch.cat(
-                    (self.v(ep_obs)[1:], FloatTensor([[0.]]))
-                ).detach()
-                ep_deltas = ep_costs.unsqueeze(-1)\
-                    + gae_gamma * next_vals\
-                    - curr_vals
+                next_vals = torch.cat((self.v(ep_obs)[1:], torch.tensor([[0.]], dtype=torch.float32, device=device))).detach()
+                ep_deltas = ep_costs.unsqueeze(-1) + gae_gamma * next_vals - curr_vals
 
-                ep_advs = FloatTensor([
-                    ((ep_gms * ep_lmbs)[:t - j].unsqueeze(-1) * ep_deltas[j:])
-                    .sum()
-                    for j in range(t)
-                ])
+                ep_advs = torch.tensor([((ep_gms * ep_lmbs)[:t - j].unsqueeze(-1) * ep_deltas[j:]).sum() for j in range(t)], dtype=torch.float32, device=device)
+                
                 advs.append(ep_advs)
 
                 gms.append(ep_gms)
@@ -206,8 +195,9 @@ class GAIL(Module):
                 .format(i + 1, np.mean(rwd_iter))
             )
 
-            obs = FloatTensor(np.array(obs))
-            acts = FloatTensor(np.array(acts))
+            obs = torch.tensor(np.array(obs), dtype=torch.float32, device=device)
+            acts = torch.tensor(np.array(acts), dtype=torch.float32, device=device)
+            
             rets = torch.cat(rets)
             advs = torch.cat(advs)
             gms = torch.cat(gms)
